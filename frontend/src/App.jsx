@@ -1,0 +1,175 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { httpBatchLink } from "@trpc/client";
+import React, { useMemo, useState, useEffect } from "react";
+import axios from "axios";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import socketIO from "socket.io-client";
+import Messenger from "./Components/ChatPage/Messenger";
+import VideoGen from "./Components/PostPage/VideoGen/VideoGen";
+import Authentication from "./Components/AuthenticationPage/Authentication";
+import UserProfile from "./Components/UserProfile/UserProfile";
+import { trpc } from "./lib/trpc";
+import LandingPage from "./Components/LandingPage/LandingPage";
+import Header from "./Components/Header";
+import SearchPage from "./Components/SearchPage/SearchPage";
+import Explore from "./Components/Explore/Explore";
+import PostPage from "./Components/PostPage/PostPage";
+import CreatePost from "./Components/CreatePost/CreatePost";
+import { useSelector } from "react-redux";
+import { toast } from "react-toastify";
+
+function App() {
+  const [isLandingPage, setIsLandingPage] = useState(true);
+  const [showSearchSidebar, setShowSearchSidebar] = useState(false);
+  const [queryClient] = useState(() => new QueryClient());
+  const [trpcClient] = useState(() =>
+    trpc.createClient({
+      links: [
+        httpBatchLink({
+          url: "http://localhost:3000/trpc",
+        }),
+      ],
+    })
+  );
+
+  const socket = useMemo(() => socketIO.connect("https://ai-social-network-1-api.onrender.com"));
+  const [currentPage, setCurrentPage] = useState("PostPage");
+  const [searchResults, setSearchResults] = useState([]);
+  const [userList, setUserList] = useState({});
+  const [chatter, setChatter] = useState(() => {
+    const storedChatter = sessionStorage.getItem("chatter");
+    return storedChatter ? JSON.parse(storedChatter) : [];
+  });
+  const [accounts, setAccounts] = useState(
+    JSON.parse(sessionStorage.getItem("accounts")) || []
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const username = useMemo(() => sessionStorage.getItem("username"), []);
+  const [chatterRendered, setChatterRendered] = useState(false);
+  const currentUser = sessionStorage.getItem("username");
+
+  // const location = useLocation();
+  // const isLandingPage = location.pathname === "/LandingPage";
+
+  // Inside Home component
+  useEffect(() => {
+    console.log("Chatter state initialized:", chatter);
+  }, []); // Run only once on mount
+
+  useEffect(() => {
+    console.log("Chatter state updated:", chatter);
+  }, [chatter]); // Log whenever chatter state changes
+
+  useEffect(() => {
+    sessionStorage.setItem("chatter", JSON.stringify(chatter));
+    sessionStorage.setItem("accounts", JSON.stringify(accounts));
+  }, [chatter, accounts]);
+  useEffect(() => {
+    console.log("Setting up Home component...");
+
+    socket.on("messageResponse", (message) => {
+      if (message.recipient === currentUser) {
+        setChatterRendered(false);
+      }
+      if (message.sender !== username) {
+        setChatter((prevChatter) => {
+          const exists = prevChatter.some((chat) => chat.name !== message.name);
+          if (!exists) {
+            return [...prevChatter, message];
+          }
+          return prevChatter;
+        });
+      }
+    });
+
+    socket.on("connect", () => {
+      console.log("Connected to WebSocket server");
+      if (username) {
+        console.log(`Emitting userConnected for ${username}`);
+        socket.emit("userConnected", username);
+      }
+    });
+
+
+   
+
+    socket.on("disconnect", () => {
+      console.log("Disconnected from WebSocket server");
+    });
+
+    return () => {
+      console.log("Cleaning up Home component...");
+      socket.disconnect();
+    };
+  }, [socket, username]);
+
+  const performSearch = async () => {
+    try {
+      const response = await axios.get(
+        `https://ai-social-network-1-api.onrender.com/api/messageSearch/${searchQuery}`
+      );
+      setSearchResults(response.data);
+      console.log(response.data);
+      setAccounts((prev) => [...prev, response.data]);
+      handleSearch();
+    } catch (error) {
+      console.error("Error fetching search results:", error);
+    }
+  };
+
+  const handleSearch = () => {
+    setShowSearch(!showSearch);
+  };
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  return (
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <main className="flex overflow-x-hidden no-scrollbar">
+            {!isLandingPage && (
+              <Header
+                showSearchSidebar={showSearchSidebar}
+                setShowSearchSidebar={setShowSearchSidebar}
+              />
+            )}
+            <SearchPage showSearchSidebar={showSearchSidebar} socket={socket} />
+            <div className="App flex-1 overflow-x-hidden">
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/explore" element={<Explore/>}/>
+                <Route path="/createPost" element={<CreatePost/>}/>
+                <Route path="/profile" element={<UserProfile/>}/>
+                <Route path="/profile/:name" element={<UserProfile/>}/>
+                <Route path="/videoGen" element={<VideoGen/>}/>
+                <Route path="/PostPage" element={<PostPage socket={socket} setIsLandingPage={setIsLandingPage}/>} />
+                <Route path="/messenger"
+                element={
+                <Messenger 
+                      socket={socket}
+                      handleSearch={handleSearch}
+                      showSearch={showSearch}
+                      chatter={chatter}
+                      accounts={accounts}
+                      performSearch={performSearch}
+                      handleSearchChange={handleSearchChange}
+                      searchQuery={searchQuery}
+                      chatterRendered={chatterRendered}
+                      currentUser={currentUser}
+                  />
+                }/>
+                <Route path="/authentication" element={<Authentication />} />
+              </Routes>
+              
+            </div>
+          </main>
+        </Router>
+      </QueryClientProvider>
+    </trpc.Provider>
+  );
+}
+
+export default App;

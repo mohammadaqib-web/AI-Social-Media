@@ -1,0 +1,28 @@
+.bg-image {
+  background: radial-gradient(at 100% 10%,rgb(13, 78, 139), #070707 50%);
+  padding-top: 20px;
+  padding-left: 10px;
+   
+  }
+  
+
+/* .bg-image1{
+    background-image: url('../../../assets/rectangle.png'); 
+    background-size: cover;
+    background-position: 10px 20px;
+} */
+
+
+@media (min-width: 1024px) {
+  .para {
+margin-left: 100px !important;   
+  }
+  
+}
+
+@media (min-width: 768px) and  (max-width: 1024px) {
+  .para {
+visibility: hidden;   
+  }
+  
+}
